@@ -13,6 +13,15 @@ if [ ! "$CONFIG_LOG_FILE" ]; then
     CONFIG_LOG_FILE="$(dirname "$0")/easy.log"
 fi
 
+#判断是否mac
+is_macos() {
+    if [ "$(uname)"=="Darwin" ]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
 #当前运行脚本的路径
 SCRIPT_FILE="$0"
 
