@@ -3,16 +3,6 @@
 #用户密码
 #USER_PASSWORD="$USER_PASSWORD"
 
-#全局配置文件
-if [ ! "$CONFIG_FILE" ]; then
-    CONFIG_FILE="$(dirname "$0")/config.plist"
-fi
-
-#日志文件
-if [ ! "$CONFIG_LOG_FILE" ]; then
-    CONFIG_LOG_FILE="$(dirname "$0")/easy.log"
-fi
-
 #判断是否mac
 is_macos() {
     if [ "$(uname)"=="Darwin" ]; then
@@ -25,9 +15,6 @@ is_macos() {
 #当前运行脚本的路径
 SCRIPT_FILE="$0"
 
-#全局返回值
-#G_RET=""
-
 #日志标识符
 G_LOG_ID=""
 
@@ -37,6 +24,50 @@ G_PID=$$
 #清空屏幕
 cls() {
     tput reset
+}
+
+# 检查当前用户是否为root用户
+function is_root {
+    if [ "$(id -u)" = "0" ]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# 得到当前用户名
+function get_username() {
+    local name=$(id -un)
+    echo $name
+}
+
+#非root用户时清屏
+if ! is_root; then
+    cls
+fi
+
+#转换为绝对路径
+function to_abs_path() {
+    local path="$1"
+    if [[ $path == /* ]]; then
+        echo "$path"
+    else
+        echo $(readlink -f "$path")
+    fi
+}
+
+#重写dir名,如果传入相对路径则自动转换为绝对路径
+function dirname() {
+    local path=$1
+
+    if [[ $path != /* ]]; then
+        path= $(readlink -f "$path")
+    fi
+
+    local dir="${path%/*}"
+    dir=${dir%/}
+
+    echo "$dir"
 }
 
 #判断当前是标准输出,还是输出到变量 或 文件
@@ -147,14 +178,18 @@ is_req_passwd() {
 
 #提升root权限,提升后sudo时不用输入密码
 su_root() {
-    #先判断当前是否需要输入密码
 
+    if is_root; then
+        return 0
+    fi
+
+    #先判断当前是否需要输入密码
     if ! is_req_passwd; then
         return 0
     fi
 
     if [ "$USER_PASSWORD" ]; then
-        echo $USER_PASSWORD | sudo -S true
+        echo $USER_PASSWORD | sudo -S true >/dev/null 2>&1
 
         if [ $? != 0 ]; then
             outerr "环境变量中的密码错误!"
@@ -247,8 +282,6 @@ exec_cmd_ex() {
             #去掉前后空白字符
             cmd_output=$(trim "$cmd_output")
             echo "$cmd_output"
-
-            G_RET="$cmd_output"
         fi
         return "0"
     fi
@@ -278,26 +311,9 @@ exec_cmd() {
     return $?
 }
 
-# 检查当前用户是否为root用户
-function is_root {
-    if [ "$(id -u)" = "0" ]; then
-        return 0
-    else
-        return 1
-    fi
-}
-
-# 得到当前用户名
-function get_username() {
-    local name=$(id -un)
-    echo $name
-    G_RET=$name
-}
-
 #判断上一个命令是否出错
 function is_error() {
-    G_RET=$?
-    if [ $G_RET -ne 0 ]; then
+    if [ $? -ne 0 ]; then
         return 0
     else
         return 1
@@ -306,12 +322,11 @@ function is_error() {
 
 #判断上一个命令是否成功
 function is_success() {
-    G_RET=$?
-    if [ $G_RET -eq 0 ]; then
+    local code=$?
+    if [ $code -eq 0 ]; then
         return 0
-    else
-        return $G_RET
     fi
+    return $code
 }
 
 #写文件
@@ -362,7 +377,6 @@ write_file() {
 #读文件
 read_text() {
     local file_path="$1"
-    G_RET=""
 
     # 读取文件内容并去除前后空白字符
     local content
@@ -375,7 +389,6 @@ read_text() {
     else
         content=$(echo "$content" | xargs)
         echo "$content"
-        G_RET="$content"
         return 0
     fi
 }
@@ -385,13 +398,21 @@ read_text() {
 del_file() {
     local file_path="$1"
 
+    if ! file_exists "$file_path"; then
+        return 0
+    fi
+
     # 强制删除文件
     rm -f "$file_path"
 
     local ret_code=$?
 
     if [ $ret_code != 0 ]; then
-        outerr "删除文件失败,错误代码: $ret_code , $file_path"
+
+        if is_stdout; then
+            outerr "删除文件失败,错误代码: $ret_code , $file_path"
+        fi
+
         return $ret_code
     else
         return 0
@@ -456,7 +477,6 @@ ps_exists() {
 get_disk_info() {
     local dev_path=$1
     local item_str=$2
-    G_RET=""
 
     if [ -z "$dev_path" ] || [ -z "$item_str" ]; then
         outerr "get_disk_info失败,参数不正确: path:${dev_path} , item name:{item_str}"
@@ -481,8 +501,6 @@ get_disk_info() {
     #media_name=$(trim "$media_name")
 
     echo "$value"
-    G_RET="$value"
-
     return 0
 }
 
@@ -496,7 +514,6 @@ get_disk_uuid() {
             return 1
         else
             echo $uuid
-            G_RET=$uuid
             return 0
         fi
     else
@@ -580,13 +597,22 @@ write_config() {
         return 1
     fi
 
+    if is_root; then
+        outlog "修改配置文件权限..."
+        chmod 777 "${CONFIG_FILE}"
+        if ! is_success; then
+            outerr "修改配置文件权限失败:$?"
+        fi
+    fi
+
     return 0
 }
 
-#msg_query
+#删除文件
+
 msg_query() {
 
-    cls
+    #cls
 
     while true; do
         echo -e "$1" >&2
@@ -602,22 +628,27 @@ msg_query() {
             return 0
             ;;
         *)
-            cls
+            #cls
             echo "输入错误!" >&2
             ;;
         esac
     done
 }
 
+#全局配置文件
+if [ ! "$CONFIG_FILE" ]; then
+    CONFIG_FILE="$(dirname "$0")/config.plist"
+    #echo "配置文件:${CONFIG_FILE}"
+fi
+
+#日志文件
+if [ ! "$CONFIG_LOG_FILE" ]; then
+    CONFIG_LOG_FILE="$(dirname "$0")/easy.log"
+    #echo "日志文件:${CONFIG_LOG_FILE}"
+fi
+
 #创建日志文件
 if ! file_exists "$CONFIG_LOG_FILE"; then
     echo "" >"$CONFIG_LOG_FILE"
-    chmod 777 "$CONFIG_LOG_FILE"
+    #chmod 777 "$CONFIG_LOG_FILE"
 fi
-
-#非root用户时清屏
-if ! is_root; then
-    cls
-fi
-
-echo $0

@@ -7,20 +7,35 @@
 #全局返回变量
 
 #服务名
-SERVICE_NAME="app.eatm.service"
+_SERVICE_NAME="app.eatm.service"
 
 #安装类型
-SERVICE_TYPE="root"
+_SERVICE_TYPE="root"
 #root   -开机时加载-暂时仅支持root类型安装
 #user   -当前用户登录时加载
 #all    -所有用户登录时加载
 
 #加载自动运行   逻辑值 true/false
-SERVICE_AUTORUN="true"
+_SERVICE_AUTORUN="true"
 
 #服务可执行路径与参数
-SERVER_EXEC_FILE=""
-SERVER_EXEC_ARGS=""
+_SERVER_EXEC_FILE=""
+_SERVER_EXEC_ARGS=""
+
+_SERVICE_EXIT_TIMEOUT=30
+
+#配置服务 _SERVICE_NAME [_SERVICE_AUTORUN] [_SERVICE_EXIT_TIMEOUT] _SERVER_EXEC_FILE [_SERVER_EXEC_ARGS]
+service_config() {
+    _SERVICE_NAME=$1
+    _SERVICE_AUTORUN=$2
+    _SERVICE_EXIT_TIMEOUT=$3
+
+    local tmp=$(to_abs_path "$4")
+
+    _SERVER_EXEC_FILE="$tmp"
+
+    _SERVER_EXEC_ARGS="$5"
+}
 
 #自动执行命令,按照是否root用户,是否需要sudo
 _service_exec() {
@@ -30,7 +45,7 @@ _service_exec() {
     local params=(${@:2})
 
     local cmd_output
-    if [ "$SERVICE_TYPE" = "root" ]; then
+    if [ "$_SERVICE_TYPE" = "root" ]; then
         cmd_output="$(sudo ${cmd_str} ${params[@]} 2>&1)"
     else
         cmd_output="$(${cmd_str} ${params[@]} 2>&1)"
@@ -47,20 +62,24 @@ _service_exec() {
 
 #判断服务是否安装
 service_is_install() {
-    local ret
 
-    if _service_exec launchctl list $SERVICE_NAME; then
+    local plistText='
+    
+    '
+
+    _service_exec launchctl list $_SERVICE_NAME
+    if is_success; then
         return 0
+    else
+        return 1
     fi
-
-    return $?
 }
 
 #得到服务pid
 service_pid() {
     local ret
 
-    ret="$(_service_exec launchctl list $SERVICE_NAME)"
+    ret="$(_service_exec launchctl list $_SERVICE_NAME)"
 
     if ! is_success; then
         outerr "获取服务pid失败,可能服务不存在"
@@ -74,7 +93,7 @@ service_pid() {
         if ! is_stdout; then
             echo $pid
         fi
-
+        
         return 0
     fi
 
@@ -102,7 +121,7 @@ service_is_run() {
 service_stop() {
 
     outlog "停止服务..."
-    if ! _service_exec launchctl stop $SERVICE_NAME; then
+    if ! _service_exec launchctl stop $_SERVICE_NAME; then
         outerr "停止服务失败:$?"
         return 1
     fi
@@ -129,7 +148,7 @@ service_stop() {
 service_start() {
 
     outlog "启动服务..."
-    if ! _service_exec launchctl start $SERVICE_NAME; then
+    if ! _service_exec launchctl start $_SERVICE_NAME; then
         outerr "启动服务失败:$?"
         return 1
     fi
@@ -138,21 +157,43 @@ service_start() {
     local i=1
     local MAX=10
     while [ $i -le $MAX ]; do
-        if  service_is_run; then
+        if service_is_run; then
             outlog "服务已启动!"
             return 0
         fi
-        
+
         sleep 1
         i=$((i + 1))
     done
-    
+
     outerr "等待服务启动超时!"
     return 1
 }
 
-
 #删除服务
 service_remote() {
-    sudo launchctl remove com.easy.ramdisk
+
+    outlog "删除服务..."
+    if ! _service_exec launchctl remove $_SERVICE_NAME; then
+        outerr "删除服务失败"
+        #return 1
+    fi
+
+    local cfPath
+    if [ "$_SERVICE_TYPE" = "root" ]; then
+        cfPath="/Library/LaunchDaemons/${_SERVICE_NAME}.plist"
+    else
+        cfPath="$HOME/Library/LaunchAgents/${_SERVICE_NAME}.plist"
+    fi
+
+    if ! file_exists "${cfPath}"; then
+        outerr "服务配置文件不存在:${cfPath}!"
+        return 1
+    fi
+
+    if [ "$_SERVICE_TYPE" = "root" ]; then
+        exec_desc "删除服务配置文件" sudo rm -f "${cfPath}"
+    else
+        exec_desc "删除服务配置文件" rm -f "${cfPath}"
+    fi
 }
