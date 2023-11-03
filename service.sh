@@ -115,6 +115,8 @@ service_install() {
         return 1
     fi
 
+    sudo chmod 777 "${cfPath}"
+
     outlog "安装服务成功!"
     return 0
 }

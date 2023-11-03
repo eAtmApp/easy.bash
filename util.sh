@@ -59,7 +59,7 @@ function to_abs_path() {
 #重写dir名,如果传入相对路径则自动转换为绝对路径
 function dirname() {
     local path=$1
-
+    
     if [[ $path != /* ]]; then
         path= $(readlink -f "$path")
     fi
