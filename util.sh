@@ -1,19 +1,13 @@
 #!/bin/bash
 
-#用户密码
-#USER_PASSWORD="$USER_PASSWORD"
-
 #判断是否mac
 is_macos() {
-    if [ "$(uname)"=="Darwin" ]; then
+    if [ "$(uname)" == "Darwin" ]; then
         return 0
     else
         return 1
     fi
 }
-
-#当前运行脚本的路径
-SCRIPT_FILE="$0"
 
 #日志标识符
 G_LOG_ID=""
@@ -24,6 +18,11 @@ G_PID=$$
 #清空屏幕
 cls() {
     tput reset
+}
+
+function set_log_id()
+{
+    G_LOG_ID="$1"
 }
 
 # 检查当前用户是否为root用户
@@ -37,14 +36,15 @@ function is_root {
 
 # 得到当前用户名
 function get_username() {
-    local name=$(id -un)
-    echo $name
+    local name
+    name=$(id -un)
+    echo "$name"
 }
 
 #非root用户时清屏
-if ! is_root; then
-    cls
-fi
+#if ! is_root; then
+    #cls
+#fi
 
 #转换为绝对路径
 function to_abs_path() {
@@ -52,16 +52,16 @@ function to_abs_path() {
     if [[ $path == /* ]]; then
         echo "$path"
     else
-        echo $(readlink -f "$path")
+        echo "$(readlink -f "$path")"
     fi
 }
 
 #重写dir名,如果传入相对路径则自动转换为绝对路径
 function dirname() {
     local path=$1
-    
+
     if [[ $path != /* ]]; then
-        path= $(readlink -f "$path")
+        path="$(readlink -f "$path")"
     fi
 
     local dir="${path%/*}"
@@ -81,7 +81,8 @@ is_stdout() {
 
 #字符串处理前后空白
 trim() {
-    local cmd_output=$(echo "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    local cmd_output
+    cmd_output=$(echo "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
     echo "$cmd_output"
 }
 
@@ -101,7 +102,7 @@ is_empty() {
 output() {
     local type_str=$1
     local log_str="${@:2}"
-
+    
     local logid=""
 
     if [ "$G_LOG_ID" ]; then
@@ -311,6 +312,15 @@ exec_cmd() {
     return $?
 }
 
+function try_error() {
+    local code=$?
+    if [ $code -eq 0 ]; then
+        return 1
+    fi
+    outerr "$1 :$code"
+    return 0
+}
+
 #判断上一个命令是否出错
 function is_error() {
     if [ $? -ne 0 ]; then
@@ -334,7 +344,8 @@ write_file() {
     local file_path="$1"
     local content="${@:2}"
 
-    local folderpath=$(dirname "$file_path")
+    local folderpath
+    folderpath="$(dirname "$file_path")"
 
     local ret_code
 
@@ -441,7 +452,8 @@ mkdir() {
 
 #判断用户是否已经登录
 is_login() {
-    local uname="$(users)"
+    local uname
+    uname="$(users)"
     if [ "$uname" = "" ]; then
         return 1
     else
@@ -451,7 +463,8 @@ is_login() {
 
 #判断进程是否存在
 ps_exists() {
-    local ret_str=$(pgrep "$1")
+    local ret_str
+    ret_str=$(pgrep "$1")
     if [ "$ret_str" = "" ]; then
         return 1
     else
@@ -474,14 +487,15 @@ get_disk_info() {
         return 1
     fi
 
-    local devInfo="$(call_desc "获取磁盘${devStr}信息..." diskutil info $dev_path)"
-    #local devInfo="$(diskutil info $dev_path)"
+    local devInfo
+    devInfo="$(call_desc "获取磁盘${dev_path}信息..." diskutil info "$dev_path")"
     if is_error; then
         return 1
     fi
 
     #local uuid=$(echo "$devInfo" | grep -o 'Volume UUID:.*' | sed 's/Volume UUID://')
-    local value=$(echo "$devInfo" | grep -o "${item_str}:.*" | sed "s/${item_str}://")
+    local value
+    value=$(echo "$devInfo" | grep -o "${item_str}:.*" | sed "s/${item_str}://")
     value=$(trim "$value")
     #media_name=$(echo "$devInfo" | grep -o 'Device / Media Name:.*' | sed 's/Device \/ Media Name://')
     #media_name=$(trim "$media_name")
@@ -492,7 +506,8 @@ get_disk_info() {
 
 #得到磁盘uuid
 get_disk_uuid() {
-    local uuid=$(get_disk_info $1 "Volume UUID")
+    local uuid
+    uuid=$(get_disk_info $1 "Volume UUID")
     local ret=$?
     if [ $ret == 0 ]; then
         if [ ${#uuid} != 36 ]; then
@@ -530,7 +545,8 @@ trim_all() {
 
 #字符串查找(源字符串,查找字符串)
 str_find_regex() {
-    local ret=$(echo "$1" | grep -oE "$2")
+    local ret
+    ret=$(echo "$1" | grep -oE "$2")
     if [ "$3" ]; then
         ret=$(echo "$ret" | grep -oE "$3")
     fi
@@ -561,7 +577,8 @@ read_config() {
         return 0
     fi
 
-    local val="$(defaults read "$CONFIG_FILE" "$1")"
+    local val
+    val="$(defaults read "$CONFIG_FILE" "$1")"
     echo "$val"
     return 0
 
@@ -576,7 +593,8 @@ read_config() {
 
 #写配置
 write_config() {
-    local ret=$(defaults write "$CONFIG_FILE" "$1" "$2")
+    local ret
+    ret=$(defaults write "$CONFIG_FILE" "$1" "$2")
     if is_error; then
         outerr "保存配置失败${CONFIG_FILE},name:${1}:value:${2}"
         outerr "$ret"
@@ -604,7 +622,7 @@ msg_query() {
         echo -e "$1" >&2
         echo -e "请输入(y/n)" >&2
 
-        read reply
+        read -r reply
 
         case $reply in
         n | N)
