@@ -86,7 +86,7 @@ trim() {
 }
 
 #判断字符串是否为空
-is_str_empty() {
+is_empty() {
     local str="$1"
     str=$(trim "$str")
 
@@ -336,39 +336,25 @@ write_file() {
 
     local folderpath=$(dirname "$file_path")
 
+    local ret_code
+
     #测试该目录权限
     if ! test -w "$folderpath"; then
-
-        #没权限的话先写到临时目录中
-        temp_file=$(mktemp)
-        if is_error; then
-            outerr "创建临时文件失败"
-            return 1
-        fi
-        if ! write_file "$temp_file" "$content"; then
-            outerr "写入临时文件失败"
-            return 1
-        fi
 
         if ! su_root; then
             return 1
         fi
 
-        sudo mv -f "$temp_file" "$file_path"
-
-        local ret_code=$?
-        if [ $ret_code != 0 ]; then
-            outerr "移动文件失败,错误代码: $ret_code , $file_path"
-            return $ret_code
-        fi
-
+        echo "$content" | sudo tee "$file_path" >/dev/null
     else
         echo "$content" >"$file_path"
-        local ret_code=$?
-        if [ $ret_code != 0 ]; then
-            outerr "写入文件失败,错误代码: $ret_code , $file_path"
-            return $ret_code
-        fi
+    fi
+
+    ret_code=$?
+
+    if [ $ret_code != 0 ]; then
+        outerr "写入文件失败,错误代码: $ret_code , $file_path"
+        return $ret_code
     fi
 
     return 0

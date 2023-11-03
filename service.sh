@@ -29,12 +29,31 @@ service_config() {
     _SERVICE_NAME=$1
     _SERVICE_AUTORUN=$2
     _SERVICE_EXIT_TIMEOUT=$3
-
-    local tmp=$(to_abs_path "$4")
-
-    _SERVER_EXEC_FILE="$tmp"
-
+    _SERVER_EXEC_FILE=$(to_abs_path "$4")
     _SERVER_EXEC_ARGS="$5"
+
+    #不定长度参数
+    for i in "${@:6}"; do
+        _SERVER_EXEC_ARGS+=("$i")
+    done
+}
+
+#是否root用户服务
+service_is_root() {
+    if [ "$_SERVICE_TYPE" = "root" ]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+#得到服务的配置文件 路径
+service_get_config_path() {
+    if service_is_root; then
+        echo "/Library/LaunchDaemons/${_SERVICE_NAME}.plist"
+    else
+        echo cfPath="$HOME/Library/LaunchAgents/${_SERVICE_NAME}.plist"
+    fi
 }
 
 #自动执行命令,按照是否root用户,是否需要sudo
@@ -45,7 +64,7 @@ _service_exec() {
     local params=(${@:2})
 
     local cmd_output
-    if [ "$_SERVICE_TYPE" = "root" ]; then
+    if service_is_root; then
         cmd_output="$(sudo ${cmd_str} ${params[@]} 2>&1)"
     else
         cmd_output="$(${cmd_str} ${params[@]} 2>&1)"
@@ -53,20 +72,55 @@ _service_exec() {
 
     local errcode=$?
 
-    if ! is_stdout; then
-        echo "$cmd_output"
-    fi
+    #if ! is_stdout; then
+    echo "$cmd_output"
+    #fi
 
     return $errcode
 }
 
-#判断服务是否安装
-service_is_install() {
+service_install() {
+    local argsStr=""
+    for f in "${_SERVER_EXEC_ARGS[@]}"; do
+        local item="<string>"${f}"</string>"
+        argsStr+="$item"
+    done
 
     local plistText='
-    
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+            <dict>
+                <key>Label</key>
+                <string>'${_SERVICE_NAME}'</string>
+                <key>ProgramArguments</key>
+                <array>
+                    <string>'${_SERVER_EXEC_FILE}'</string>
+                    '${argsStr}'
+                </array>
+                <key>RunAtLoad</key>
+                <'${_SERVICE_AUTORUN}' />
+                <key>ExitTimeOut</key>
+                <integer>'${_SERVICE_EXIT_TIMEOUT}'</integer>
+            </dict>
+        </plist>
     '
 
+    local cfPath="$(service_get_config_path)"
+
+    write_file "${cfPath}" "$plistText"
+    
+    if ! _service_exec launchctl load -w "${cfPath}"; then
+        outerr "安装服务失败"
+        return 1
+    fi
+
+    outlog "安装服务成功!"
+    return 0
+}
+
+#判断服务是否安装
+service_is_install() {
     _service_exec launchctl list $_SERVICE_NAME
     if is_success; then
         return 0
@@ -93,7 +147,7 @@ service_pid() {
         if ! is_stdout; then
             echo $pid
         fi
-        
+
         return 0
     fi
 
@@ -176,15 +230,9 @@ service_remote() {
     outlog "删除服务..."
     if ! _service_exec launchctl remove $_SERVICE_NAME; then
         outerr "删除服务失败"
-        #return 1
     fi
 
-    local cfPath
-    if [ "$_SERVICE_TYPE" = "root" ]; then
-        cfPath="/Library/LaunchDaemons/${_SERVICE_NAME}.plist"
-    else
-        cfPath="$HOME/Library/LaunchAgents/${_SERVICE_NAME}.plist"
-    fi
+    local cfPath="$(service_get_config_path)"
 
     if ! file_exists "${cfPath}"; then
         outerr "服务配置文件不存在:${cfPath}!"
