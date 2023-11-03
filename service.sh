@@ -61,13 +61,13 @@ _service_exec() {
     #命令
     local cmd_str=$1
     #命令数组- 从第3个开始截取参数
-    local params=(${@:2})
+    local params=("${@:2}")
 
     local cmd_output
     if service_is_root; then
-        cmd_output="$(sudo ${cmd_str} ${params[@]} 2>&1)"
+        cmd_output="$(sudo "${cmd_str}" "${params[@]}" 2>&1)"
     else
-        cmd_output="$(${cmd_str} ${params[@]} 2>&1)"
+        cmd_output="$("${cmd_str}" "${params[@]}" 2>&1)"
     fi
 
     local errcode=$?
@@ -82,7 +82,7 @@ _service_exec() {
 service_install() {
     local argsStr=""
     for f in "${_SERVER_EXEC_ARGS[@]}"; do
-        local item="<string>"${f}"</string>"
+        local item="<string>${f}</string>"
         argsStr+="$item"
     done
 
@@ -106,7 +106,8 @@ service_install() {
         </plist>
     '
 
-    local cfPath="$(service_get_config_path)"
+    local cfPath
+    cfPath="$(service_get_config_path)"
 
     write_file "${cfPath}" "$plistText"
     
@@ -142,12 +143,13 @@ service_pid() {
         return $?
     fi
 
-    local pid=$(str_find_regex "$ret" '"PID"\s*=\s*([0-9]+);' '\d+')
+    local pid
+    pid=$(str_find_regex "$ret" '"PID"\s*=\s*([0-9]+);' '\d+')
 
     if is_success; then
 
         if ! is_stdout; then
-            echo $pid
+            echo "$pid"
         fi
 
         return 0
@@ -164,7 +166,8 @@ service_pid() {
 
 #判断服务是否正在运行
 service_is_run() {
-    local pid=$(service_pid)
+    local pid
+    pid=$(service_pid)
 
     if [ "$pid" ]; then
         return 0
@@ -234,7 +237,8 @@ service_remote() {
         outerr "删除服务失败"
     fi
 
-    local cfPath="$(service_get_config_path)"
+    local cfPath
+    cfPath="$(service_get_config_path)"
 
     if ! file_exists "${cfPath}"; then
         outerr "服务配置文件不存在:${cfPath}!"

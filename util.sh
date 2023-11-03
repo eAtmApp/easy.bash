@@ -20,8 +20,7 @@ cls() {
     tput reset
 }
 
-function set_log_id()
-{
+function set_log_id() {
     G_LOG_ID="$1"
 }
 
@@ -43,7 +42,7 @@ function get_username() {
 
 #非root用户时清屏
 #if ! is_root; then
-    #cls
+#cls
 #fi
 
 #转换为绝对路径
@@ -52,7 +51,7 @@ function to_abs_path() {
     if [[ $path == /* ]]; then
         echo "$path"
     else
-        echo "$(readlink -f "$path")"
+        readlink -f "$path"
     fi
 }
 
@@ -101,8 +100,8 @@ is_empty() {
 #输出
 output() {
     local type_str=$1
-    local log_str="${@:2}"
-    
+    local log_str="${*:2}"
+
     local logid=""
 
     if [ "$G_LOG_ID" ]; then
@@ -111,14 +110,16 @@ output() {
 
     # 定义颜色编码
     RED='\033[0;31m'         #红色
-    BLUE='\033[0;34m'        #蓝色
-    GREEN='\033[0;32m'       #绿色
-    LIGHT_GREEN='\033[1;32m' #浅绿色
+    #BLUE='\033[0;34m'        #蓝色
+    #GREEN='\033[0;32m'       #绿色
+    #LIGHT_GREEN='\033[1;32m' #浅绿色
     GRAY='\033[0;37m'        #灰
     NC='\033[0m'             # 清除颜色
 
-    local time_str="$(date +"[ %Y-%m-%d %H:%M:%S ]${logid} - ${G_PID} -")"
-    local name_str=$(get_username)
+    local time_str
+    local name_str
+    time_str="$(date +"[ %Y-%m-%d %H:%M:%S ]${logid} - ${G_PID} -")"
+    name_str=$(get_username)
 
     local msg="$time_str - $log_str"
 
@@ -190,8 +191,8 @@ su_root() {
     fi
 
     if [ "$USER_PASSWORD" ]; then
-        echo $USER_PASSWORD | sudo -S true >/dev/null 2>&1
-
+        echo "$USER_PASSWORD" | sudo -S true >/dev/null 2>&1
+        
         if [ $? != 0 ]; then
             outerr "环境变量中的密码错误!"
             return 1
@@ -228,24 +229,24 @@ exec_cmd_ex() {
     local cmd_str=$4
 
     #命令数组- 从第3个开始截取参数
-    local params=(${@:5})
+    local params=("${@:5}")
 
-    if [ $desc != "null" ]; then
+    if [ "$desc" != "null" ]; then
         outlog "$desc..."
     fi
 
     #${cmd_str} ${params[@]}
-
-    cmd_output="$(${cmd_str} ${params[@]} 2>&1)"
+    
+    cmd_output="$(${cmd_str} "${params[@]}" 2>&1)"
     local ret_code=$?
 
     #这里处理一次权限总是.
     if [ $ret_code != 0 ]; then
         if [[ $cmd_output == *"Permission"* || $cmd_output == *"permitted"* ]]; then
-            outerr "执行命令$cmd_str ${params[@]} 失败! code: $ret_code ,权限不足,尝试用管理员身份执行!"
+            outerr "执行命令$cmd_str" "${params[@]}" "失败! code: $ret_code ,权限不足,尝试用管理员身份执行!"
 
             if su_root; then
-                cmd_output="$(sudo ${cmd_str} ${params[@]} 2>&1)"
+                cmd_output="$(sudo "${cmd_str}" "${params[@]}" 2>&1)"
                 ret_code=$?
 
                 if [ $ret_code == 0 ]; then
@@ -260,25 +261,25 @@ exec_cmd_ex() {
 
     if [ $ret_code != 0 ]; then
 
-        if [ $desc != "null" ]; then
-            outerr $desc"失败! code: $ret_code"
+        if [ "$desc" != "null" ]; then
+            outerr "$desc""失败! code: $ret_code"
         else
             outerr "执行命令$cmd_str 失败! code: $ret_code"
         fi
 
         rawerr "############################################################################################"
-        rawerr "命令: " $cmd_str "${params[@]}"
+        rawerr "命令: " "$cmd_str" "${params[@]}"
         rawerr "$cmd_output"
         rawerr "############################################################################################\n"
 
         #失败了需要退出.
-        if [ $err_is_exit = "true" ]; then
+        if [ "$err_is_exit" = "true" ]; then
             exit $ret_code
         else
             return $ret_code
         fi
     else
-        if [ $raw_out = "true" ]; then
+        if [ "$raw_out" = "true" ]; then
 
             #去掉前后空白字符
             cmd_output=$(trim "$cmd_output")
@@ -342,8 +343,8 @@ function is_success() {
 #写文件
 write_file() {
     local file_path="$1"
-    local content="${@:2}"
-
+    local content="${*:2}"
+    
     local folderpath
     folderpath="$(dirname "$file_path")"
 
@@ -445,7 +446,7 @@ mkdir() {
         fi
     fi
 
-    exec_cmd "/bin/mkdir" -p -m $mode "$file_path"
+    exec_cmd "/bin/mkdir" -p -m "$mode" "$file_path"
 
     return $?
 }
@@ -482,7 +483,7 @@ get_disk_info() {
         return 1
     fi
 
-    if ! file_exists $dev_path; then
+    if ! file_exists "$dev_path"; then
         outerr "get_disk_info失败,设备文件不存在:$dev_path"
         return 1
     fi
@@ -507,14 +508,14 @@ get_disk_info() {
 #得到磁盘uuid
 get_disk_uuid() {
     local uuid
-    uuid=$(get_disk_info $1 "Volume UUID")
+    uuid=$(get_disk_info "$1" "Volume UUID")
     local ret=$?
     if [ $ret == 0 ]; then
         if [ ${#uuid} != 36 ]; then
             outerr "uuid长度不对:${value}"
             return 1
         else
-            echo $uuid
+            echo "$uuid"
             return 0
         fi
     else
@@ -560,13 +561,13 @@ str_find_regex() {
 
 #退出进程-发送退出信号
 ps_exit() {
-    exec_desc "关闭进程:${1}" kill -INT $1
+    exec_desc "关闭进程:${1}" kill -INT "$1"
     return $?
 }
 
 #中止进程-强制退出
 ps_kill() {
-    exec_desc "中止进程:${1}" kill -KILL $1
+    exec_desc "中止进程:${1}" kill -KILL "$1"
     return $?
 }
 
