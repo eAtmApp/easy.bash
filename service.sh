@@ -62,7 +62,7 @@ _service_exec() {
     local cmd_str=$1
     #命令数组- 从第3个开始截取参数
     local params=("${@:2}")
-
+    
     local cmd_output
     if service_is_root; then
         cmd_output="$(sudo "${cmd_str}" "${params[@]}" 2>&1)"
@@ -72,9 +72,11 @@ _service_exec() {
 
     local errcode=$?
 
-    #if ! is_stdout; then
-    echo "$cmd_output"
-    #fi
+    if ! is_stdout; then
+        echo "$cmd_output"
+    else
+        rawout "$cmd_output"
+    fi
 
     return $errcode
 }
@@ -110,7 +112,7 @@ service_install() {
     cfPath="$(service_get_config_path)"
 
     write_file "${cfPath}" "$plistText"
-    
+
     if ! _service_exec launchctl load -w "${cfPath}"; then
         outerr "安装服务失败"
         return 1
