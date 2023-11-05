@@ -109,12 +109,12 @@ output() {
     fi
 
     # 定义颜色编码
-    RED='\033[0;31m'         #红色
+    RED='\033[0;31m' #红色
     #BLUE='\033[0;34m'        #蓝色
     #GREEN='\033[0;32m'       #绿色
     #LIGHT_GREEN='\033[1;32m' #浅绿色
-    GRAY='\033[0;37m'        #灰
-    NC='\033[0m'             # 清除颜色
+    GRAY='\033[0;37m' #灰
+    NC='\033[0m'      # 清除颜色
 
     local time_str
     local name_str
@@ -191,7 +191,7 @@ su_root() {
     fi
 
     if [ "$USER_PASSWORD" ]; then
-        if ! echo "$USER_PASSWORD" | sudo -S true >/dev/null 2>&1 ; then
+        if ! echo "$USER_PASSWORD" | sudo -S true >/dev/null 2>&1; then
             outerr "环境变量中的密码错误!"
             return 1
         fi
@@ -234,7 +234,7 @@ exec_cmd_ex() {
     fi
 
     #${cmd_str} ${params[@]}
-    
+
     cmd_output="$(${cmd_str} "${params[@]}" 2>&1)"
     local ret_code=$?
 
@@ -342,7 +342,7 @@ function is_success() {
 write_file() {
     local file_path="$1"
     local content="${*:2}"
-    
+
     local folderpath
     folderpath="$(dirname "$file_path")"
 
@@ -549,7 +549,7 @@ str_find_regex() {
     if [ "$3" ]; then
         ret=$(echo "$ret" | grep -oE "$3")
     fi
-    
+
     if [ "$ret" ]; then
         echo "$ret"
         return 0
@@ -558,7 +558,7 @@ str_find_regex() {
 }
 
 #按进程名关闭-大小写匹配
-ps_kill_name(){
+ps_kill_name() {
     pgrep -x "$1" | xargs kill -KILL
 }
 
@@ -641,6 +641,97 @@ msg_query() {
             ;;
         esac
     done
+}
+
+#编译脚本
+#参数 源文件 目标文件
+#能够简单处理 source 源文件包含 [main(入口)脚本]
+#source源路径中如果使用了相对路径请切换至该脚本工作目录执行
+function pack_scripts() {
+    local script
+    script=$(to_abs_path "$1")
+    local outfile="$2"
+
+    #入口脚本 main
+    local mainScript="$3"
+    if [ ! "$mainScript" ]; then
+        mainScript="$script"
+    fi
+
+    if ! file_exists "$script"; then
+        outerr "脚本文件不存在:${script}"
+        return 1
+    fi
+
+    local content=""
+
+    if [ "$outfile" ]; then
+        outlog "打包脚本 ${script}..."
+        content='#!/bin/bash'
+    else
+        outlog "包含脚本 ${script}..."
+    fi
+
+    while IFS= read -r line; do
+
+        # 判断是否为脚本文件头部或源代码标记
+        if [[ $line == "#!/bin/bash" ]]; then
+            continue # 跳过处理
+        elif [[ $line == "####源代码" ]]; then
+            if [ "$outfile" ]; then #清除之前的代码
+                content='#!/bin/bash'
+            else
+                content=""
+            fi
+        elif [[ $line == "source "* ]]; then
+            local pathCode=${line#"source "}
+            pathCode=$(trim "$pathCode")
+            
+            #替换路径中的变量
+            pathCode=$(str_replace "$pathCode" "\$0" "${mainScript}")
+            pathCode=$(str_replace "$pathCode" "\$BASH_SOURCE[0]" "${script}")
+            pathCode=$(str_replace "$pathCode" "\${BASH_SOURCE[0]}" "${script}")
+            pathCode=$(str_replace "$pathCode" "\$BASH_SOURCE" "${script}")
+            pathCode=$(str_replace "$pathCode" "\${BASH_SOURCE}" "${script}")
+
+            local path
+            path="$(bash -c "echo $pathCode")"
+            if is_error; then
+                outerr "处理源路径失败:${line}"
+                outerr "处理后路径代码:${pathCode}"
+                return 1
+            fi
+
+            local tmpText
+            tmpText="$(pack_scripts "$path" "" "$mainScript")"
+            if is_error; then
+                outerr "处理源脚本失败:${line}"
+                outerr "处理后路径代码:${pathCode}"
+                return 1
+            fi
+
+            content=$''${content}'\n#source '${path}''
+
+            content=$''${content}'\n'${tmpText}''
+
+        else
+            content=$''${content}'\n'${line}''
+        fi
+
+    done <"$script"
+
+    if [ "$outfile" ]; then
+        echo -e "$content" >"$outfile"
+        if ! chmod 777 "$outfile"; then
+            outerr "修改输出文件权限失败!"
+        fi
+
+        outlog "打包完成."
+    else
+        echo -e "$content"
+    fi
+
+    return 0
 }
 
 #全局配置文件
