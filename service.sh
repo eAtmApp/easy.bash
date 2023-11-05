@@ -62,7 +62,7 @@ _service_exec() {
     local cmd_str=$1
     #命令数组- 从第3个开始截取参数
     local params=("${@:2}")
-    
+
     local cmd_output
     if service_is_root; then
         cmd_output="$(sudo "${cmd_str}" "${params[@]}" 2>&1)"
@@ -118,7 +118,9 @@ service_install() {
         return 1
     fi
 
-    sudo chmod 777 "${cfPath}"
+    if ! exec_desc sudo chmod 644 "${cfPath}"; then
+        outerr "修改服务配置文件权限失败"
+    fi
 
     outlog "安装服务成功!"
     return 0
@@ -126,7 +128,7 @@ service_install() {
 
 #判断服务是否安装
 service_is_install() {
-    _service_exec launchctl list $_SERVICE_NAME
+    _service_exec launchctl list "$_SERVICE_NAME"
     if is_success; then
         return 0
     else
@@ -138,7 +140,7 @@ service_is_install() {
 service_pid() {
     local ret
 
-    ret="$(_service_exec launchctl list $_SERVICE_NAME)"
+    ret="$(_service_exec launchctl list "$_SERVICE_NAME")"
 
     if ! is_success; then
         outerr "获取服务pid失败,可能服务不存在"
@@ -171,6 +173,10 @@ service_is_run() {
     local pid
     pid=$(service_pid)
 
+    if ! is_success; then
+        return 1
+    fi
+
     if [ "$pid" ]; then
         return 0
     else
@@ -182,7 +188,7 @@ service_is_run() {
 service_stop() {
 
     outlog "停止服务..."
-    if ! _service_exec launchctl stop $_SERVICE_NAME; then
+    if ! _service_exec launchctl stop "$_SERVICE_NAME"; then
         outerr "停止服务失败:$?"
         return 1
     fi
@@ -209,7 +215,7 @@ service_stop() {
 service_start() {
 
     outlog "启动服务..."
-    if ! _service_exec launchctl start $_SERVICE_NAME; then
+    if ! _service_exec launchctl start "$_SERVICE_NAME"; then
         outerr "启动服务失败:$?"
         return 1
     fi
@@ -235,7 +241,7 @@ service_start() {
 service_remote() {
 
     outlog "删除服务..."
-    if ! _service_exec launchctl remove $_SERVICE_NAME; then
+    if ! _service_exec launchctl remove "$_SERVICE_NAME"; then
         outerr "删除服务失败"
     fi
 

@@ -191,15 +191,13 @@ su_root() {
     fi
 
     if [ "$USER_PASSWORD" ]; then
-        echo "$USER_PASSWORD" | sudo -S true >/dev/null 2>&1
-        
-        if [ $? != 0 ]; then
+        if ! echo "$USER_PASSWORD" | sudo -S true >/dev/null 2>&1 ; then
             outerr "环境变量中的密码错误!"
             return 1
         fi
     else
-        sudo true
-        if [ $? != 0 ]; then
+
+        if ! sudo true; then
             outerr "密码错误!"
             return 1
         fi
@@ -551,12 +549,17 @@ str_find_regex() {
     if [ "$3" ]; then
         ret=$(echo "$ret" | grep -oE "$3")
     fi
-
+    
     if [ "$ret" ]; then
         echo "$ret"
         return 0
     fi
     return 1
+}
+
+#按进程名关闭-大小写匹配
+ps_kill_name(){
+    pgrep -x "$1" | xargs kill -KILL
 }
 
 #退出进程-发送退出信号
